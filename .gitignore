@@ -1,0 +1,7 @@
+.db
+.env
+node_modules
+storage
+db.json
+test.png
+
