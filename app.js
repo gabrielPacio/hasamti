@@ -29,7 +29,7 @@ const slackEvents = slackEventsApi.createEventAdapter(process.env.SLACK_SIGNING_
 // Initialize a Local Storage object to store authorization info
 // NOTE: This is an insecure method and thus for demo purposes only!
 const botAuthorizationStorage = new LocalStorage('./storage');
-                                       //                                                           botAuthorizationStorage.setItem('T09JELX8X', 'fyT7bhA2P72dCqlJHbBvH9ef');
+//botAuthorizationStorage.setItem('T09JELX8X', 'fyT7bhA2P72dCqlJHbBvH9ef');
 // Helpers to cache and lookup appropriate client
 // NOTE: Not enterprise-ready. if the event was triggered inside a shared channel, this lookup
 // could fail but there might be a suitable client from one of the other teams that is within that
@@ -44,9 +44,6 @@ function getClientByTeamId(teamId) {
   }
   return null;
 }
-
-const TEAM_ID = 'T09JELX8X';
-const slackClient = getClientByTeamId(TEAM_ID);
 
 // Initialize Add to Slack (OAuth) helpers
 passport.use(new SlackStrategy({
@@ -93,10 +90,13 @@ slackEvents.on('message', (message, body) => {
     if (!message.subtype && message.text.indexOf('register') >= 0) {
       console.log('MESSAGE register');
       // Initialize a client
+      console.log('BODYYYYYYYYYYYYYY', body);
+      console.log('TEAM ID? = ', body.team_id);
+      const slack = getClientByTeamId(body.team_id);
+
       const numArr = message.text.split(' ');
       if (numArr.length !== 2) {
-        console.log('MESSAGE register error mistype');
-        slackClient.chat.postMessage({ channel: message.channel, text: `Hi, <@${message.user}>! your command was mistyped. Try again like this: "register #######", where # is a numeral of your plate` })
+        slack.chat.postMessage({ channel: message.channel, text: `Hi, <@${message.user}>! your command was mistyped. Try again like this: "register #######", where # is a numeral of your plate` })
           .catch(console.error);
       } else {
 
@@ -112,12 +112,10 @@ slackEvents.on('message', (message, body) => {
               .push({plate: num, user: message.user})
               .write();
           }
-          console.log('MESSAGE register success');
-          slackClient.chat.postMessage({ channel: message.channel, text: `Congrats <@${message.user}>! your plate number ${num} has been registered` })
+          slack.chat.postMessage({ channel: message.channel, text: `Congrats <@${message.user}>! your plate number ${num} has been registered` })
             .catch(console.error);
         } else {
-          console.log('MESSAGE register error wrong input');
-          slackClient.chat.postMessage({ channel: message.channel, text: `<@${message.user}> please use only numbers to register your plate.` })
+          slack.chat.postMessage({ channel: message.channel, text: `<@${message.user}> please use only numbers to register your plate.` })
             .catch(console.error);
         }
       }
@@ -127,7 +125,8 @@ slackEvents.on('message', (message, body) => {
 
 slackEvents.on('file_shared', (message, body) => {
   console.log('FILE SHARED');
-  slackClient.files.info({file: body.event.file.id}).then((res) => {
+  const slack = getClientByTeamId(body.team_id);
+  slack.files.info({file: body.event.file.id}).then((res) => {
     const imageUrl = res.file.url_private;
     const type = res.file.pretty_type;
 
@@ -135,7 +134,7 @@ slackEvents.on('file_shared', (message, body) => {
       url: imageUrl,
       headers: {
         'User-Agent': 'request',
-        'Authorization': 'Bearer xoxp-9626711303-423400364050-555666299511-be07d5850259b3942e8954f372b75228'
+        'Authorization': 'Bearer xoxp-9626711303-423400364050-556074674528-1ca8c59f1c149c27bb37738e75c23094'
       }
     };
 
@@ -161,7 +160,7 @@ slackEvents.on('file_shared', (message, body) => {
         console.log('found plate', data.results[0].plate);
 
         const result = data.results[0].plate;
-        slackClient.chat.postMessage({ channel: message.channel_id, text: `Hi, <@${message.user_id}> I see you've blocked the car with the plate ${result}.` })
+        slack.chat.postMessage({ channel: message.channel_id, text: `Hi, <@${message.user_id}> I see you've blocked the car with the plate ${result}.` })
          .catch(console.error);
 
         db.get('blockers')
