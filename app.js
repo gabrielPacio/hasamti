@@ -45,6 +45,9 @@ function getClientByTeamId(teamId) {
   return null;
 }
 
+const TEAM_ID = 'T09JELX8X';
+const slackClient = getClientByTeamId(TEAM_ID);
+
 // Initialize Add to Slack (OAuth) helpers
 passport.use(new SlackStrategy({
   clientID: process.env.SLACK_CLIENT_ID,
@@ -83,24 +86,24 @@ app.use(fileUpload());
 
 slackEvents.on('message', (message, body) => {
   console.log('MESSAGE');
-  console.log('%c GABPAC ------- message ', 'background: #222; color: yellow', message);
-  console.log('%c GABPAC ------- body ', 'background: #222; color: yellow', body);
   if (message.channel === 'CGC0VCYK0') { // #hasamti-channel
 
+    console.log('MESSAGE IN CHANNEL');
     // ------------------------ REGISTER PLATE----------------------------------------
     if (!message.subtype && message.text.indexOf('register') >= 0) {
+      console.log('MESSAGE register');
       // Initialize a client
-      const slack = getClientByTeamId(body.team_id);
-
       const numArr = message.text.split(' ');
       if (numArr.length !== 2) {
-        slack.chat.postMessage({ channel: message.channel, text: `Hi, <@${message.user}>! your command was mistyped. Try again like this: "register #######", where # is a numeral of your plate` })
+        console.log('MESSAGE register error mistype');
+        slackClient.chat.postMessage({ channel: message.channel, text: `Hi, <@${message.user}>! your command was mistyped. Try again like this: "register #######", where # is a numeral of your plate` })
           .catch(console.error);
       } else {
+
         const num = numArr[1];
         const reg = /^[0-9]*$/;
-        if (num.match(reg)) {
 
+        if (num.match(reg)) {
           const select = db.get('users').find({user: message.user}).value();
           if (select) {
             db.get('users').find({user: message.user}).assign({plate: num}).write();
@@ -109,10 +112,12 @@ slackEvents.on('message', (message, body) => {
               .push({plate: num, user: message.user})
               .write();
           }
-          slack.chat.postMessage({ channel: message.channel, text: `Congrats <@${message.user}>! your plate number ${num} has been registered` })
+          console.log('MESSAGE register success');
+          slackClient.chat.postMessage({ channel: message.channel, text: `Congrats <@${message.user}>! your plate number ${num} has been registered` })
             .catch(console.error);
         } else {
-          slack.chat.postMessage({ channel: message.channel, text: `<@${message.user}> please use only numbers to register your plate.` })
+          console.log('MESSAGE register error wrong input');
+          slackClient.chat.postMessage({ channel: message.channel, text: `<@${message.user}> please use only numbers to register your plate.` })
             .catch(console.error);
         }
       }
@@ -121,10 +126,8 @@ slackEvents.on('message', (message, body) => {
 });
 
 slackEvents.on('file_shared', (message, body) => {
-  console.log('file');
-  const slack = getClientByTeamId(body.team_id);
-  slack.files.info({file: body.event.file.id}).then((res) => {
-    //console.log('body --------------res------------>', res.file);
+  console.log('FILE SHARED');
+  slackClient.files.info({file: body.event.file.id}).then((res) => {
     const imageUrl = res.file.url_private;
     const type = res.file.pretty_type;
 
@@ -151,14 +154,14 @@ slackEvents.on('file_shared', (message, body) => {
           }
         }
       };
-      request.post({url: api_url, formData: data}, (err, res, body) => {
 
+      request.post({url: api_url, formData: data}, (err, res, body) => {
 
         const data = JSON.parse(body);
         console.log('found plate', data.results[0].plate);
 
         const result = data.results[0].plate;
-        slack.chat.postMessage({ channel: message.channel_id, text: `Hi, <@${message.user_id}> I see you've blocked the car with the plate ${result}.` })
+        slackClient.chat.postMessage({ channel: message.channel_id, text: `Hi, <@${message.user_id}> I see you've blocked the car with the plate ${result}.` })
          .catch(console.error);
 
         db.get('blockers')
@@ -167,7 +170,6 @@ slackEvents.on('file_shared', (message, body) => {
 
         const blockedUser = db.get('users').find({plate: result}).value().user;
       })
-
     }));
   });
 });

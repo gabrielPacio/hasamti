@@ -11,6 +11,11 @@
   ],
   "user": {},
   "count": 0,
-  "users": [],
+  "users": [
+    {
+      "plate": "12345",
+      "user": "UCFBSAQ1G"
+    }
+  ],
   "blockers": {}
 }
