@@ -45,6 +45,8 @@ function getClientByTeamId(teamId) {
   return null;
 }
 
+const slackLocalClient = new SlackClient(process.env.SLACK_OATH);
+
 // Initialize Add to Slack (OAuth) helpers
 passport.use(new SlackStrategy({
   clientID: process.env.SLACK_CLIENT_ID,
@@ -96,7 +98,7 @@ slackEvents.on('message', (message, body) => {
 
       const numArr = message.text.split(' ');
       if (numArr.length !== 2) {
-        slack.chat.postMessage({ channel: message.channel, text: `Hi, <@${message.user}>! your command was mistyped. Try again like this: "register #######", where # is a numeral of your plate` })
+        slackLocalClient.chat.postMessage({ channel: message.channel, text: `Hi, <@${message.user}>! your command was mistyped. Try again like this: "register #######", where # is a numeral of your plate` })
           .catch(console.error);
       } else {
 
@@ -112,10 +114,10 @@ slackEvents.on('message', (message, body) => {
               .push({plate: num, user: message.user})
               .write();
           }
-          slack.chat.postMessage({ channel: message.channel, text: `Congrats <@${message.user}>! your plate number ${num} has been registered` })
+          slackLocalClient.chat.postMessage({ channel: message.channel, text: `Congrats <@${message.user}>! your plate number ${num} has been registered` })
             .catch(console.error);
         } else {
-          slack.chat.postMessage({ channel: message.channel, text: `<@${message.user}> please use only numbers to register your plate.` })
+          slackLocalClient.chat.postMessage({ channel: message.channel, text: `<@${message.user}> please use only numbers to register your plate.` })
             .catch(console.error);
         }
       }
@@ -124,9 +126,11 @@ slackEvents.on('message', (message, body) => {
 });
 
 slackEvents.on('file_shared', (message, body) => {
-  console.log('FILE SHARED');
-  const slack = getClientByTeamId(body.team_id);
-  slack.files.info({file: body.event.file.id}).then((res) => {
+  const fileId = body.event.file_id;
+  console.log('FILE SHARED -', fileId);
+  slackLocalClient.files.info({file: fileId}).then((res) => {
+
+    console.log('File info:',res);
     const imageUrl = res.file.url_private;
     const type = res.file.pretty_type;
 
@@ -134,7 +138,7 @@ slackEvents.on('file_shared', (message, body) => {
       url: imageUrl,
       headers: {
         'User-Agent': 'request',
-        'Authorization': 'Bearer xoxp-9626711303-423400364050-556074674528-1ca8c59f1c149c27bb37738e75c23094'
+        'Authorization': 'Bearer xoxp-9626711303-423400364050-557933663511-92b35fb78d88645bde82093a7a1c82cf'
       }
     };
 
@@ -157,20 +161,22 @@ slackEvents.on('file_shared', (message, body) => {
       request.post({url: api_url, formData: data}, (err, res, body) => {
 
         const data = JSON.parse(body);
-        console.log('found plate', data.results[0].plate);
+        console.log('found plate', data);
 
-        const result = data.results[0].plate;
-        slack.chat.postMessage({ channel: message.channel_id, text: `Hi, <@${message.user_id}> I see you've blocked the car with the plate ${result}.` })
+        /*const result = data.results[0].plate;
+        slackLocalClient.chat.postMessage({ channel: message.channel_id, text: `Hi, <@${message.user_id}> I see you've blocked the car with the plate ${result}.` })
          .catch(console.error);
 
         db.get('blockers')
           .push({user: message.user_id, blocking: result})
           .write();
 
-        const blockedUser = db.get('users').find({plate: result}).value().user;
+        const blockedUser = db.get('users').find({plate: result}).value();
+        console.log('--------------------------------------', blockedUser);*/
       })
     }));
-  });
+  })
+    .catch(err => console.log('---------- err --------------', err));
 });
 
 /*slackEvents.on('file_created', (message, body) => {
