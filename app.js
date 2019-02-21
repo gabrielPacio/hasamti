@@ -1,6 +1,6 @@
 // Load environment variables from `.env` file (optional)
 require('dotenv').config();
-
+​
 const slackEventsApi = require('@slack/events-api');
 const SlackClient = require('@slack/client').WebClient;
 const passport = require('passport');
@@ -13,19 +13,21 @@ const FileSync = require('lowdb/adapters/FileSync');
 const request = require('request');
 const fileUpload = require('express-fileupload');
 const fs = require('fs');
-
-
+​
+const _CHANNEL_ID = 'CGC0VCYK0'
+​
+​
 const adapter = new FileSync('db.json');
 const db = low(adapter);
-
+​
 db.defaults({ users: [], blockers: {}, count: 0 })
   .write();
-
+​
 // *** Initialize event adapter using signing secret from environment variables ***
 const slackEvents = slackEventsApi.createEventAdapter(process.env.SLACK_SIGNING_SECRET, {
   includeBody: true
 });
-
+​
 // Initialize a Local Storage object to store authorization info
 // NOTE: This is an insecure method and thus for demo purposes only!
 const botAuthorizationStorage = new LocalStorage('./storage');
@@ -44,9 +46,9 @@ function getClientByTeamId(teamId) {
   }
   return null;
 }
-
+​
 const slackLocalClient = new SlackClient(process.env.SLACK_OATH);
-
+​
 // Initialize Add to Slack (OAuth) helpers
 passport.use(new SlackStrategy({
   clientID: process.env.SLACK_CLIENT_ID,
@@ -56,10 +58,10 @@ passport.use(new SlackStrategy({
   botAuthorizationStorage.setItem(team.id, extra.bot.accessToken);
   done(null, {});
 }));
-
+​
 // Initialize an Express application
 const app = express();
-
+​
 // Plug the Add to Slack (OAuth) helpers into the express app
 app.use(passport.initialize());
 app.get('/', (req, res) => {
@@ -77,155 +79,156 @@ app.get('/auth/slack/callback',
     res.status(500).send(`<p>Greet and React failed to install</p> <pre>${err}</pre>`);
   }
 );
-
+​
 // *** Plug the event adapter into the express app as middleware ***
 app.use('/slack/receive', slackEvents.expressMiddleware());
 app.use(fileUpload());
 // *** Attach listeners to the event adapter ***
-
+​
 slackEvents.on('message', (message, body) => {
   console.log('MESSAGE', message.text);
-  if (message.channel === 'CGC0VCYK0') { // #hasamti-channel
-
-    console.log('MESSAGE IN CHANNEL');
-
-    // ------------------------ UNREGISTER ----------------------------------------
-    if (!message.subtype && message.text.indexOf('unregister') >= 0) {
+​
+ if (message.channel === _CHANNEL_ID) { // #hasamti-channel
+ ​
+  console.log('MESSAGE IN CHANNEL');
+​
+   // ------------------------ UNREGISTER ----------------------------------------
+   if (!message.subtype && message.text.indexOf('unregister') >= 0) {
+     const select = db.get('users').find({user: message.user}).value();
+     if (select) {
+       db.get('users').remove({user: message.user}).write();
+       console.log('MESSAGE unregister success');
+       slackLocalClient.chat.postMessage({ channel: message.channel, text: `Congrats <@${message.user}>! your plate number has been unregistered` })
+         .catch(console.error);
+​
+     } else {
+       console.log('MESSAGE unregister success');
+       slackLocalClient.chat.postMessage({ channel: message.channel, text: `404 - <@${message.user}>! your license plate number was not found` })
+         .catch(console.error);
+     }
+   } else
+     ​
+   // ------------------------ REGISTER PLATE----------------------------------------
+   if (!message.subtype && message.text.indexOf('register') >= 0) {
+     console.log('MESSAGE register');
+     // Initialize a client
+     const numArr = message.text.split(' ');
+     if (numArr.length !== 2) {
+       console.log('MESSAGE register error mistype');
+       slackLocalClient.chat.postMessage({ channel: message.channel, text: `Hi, <@${message.user}>! your command was mistyped. Try again like this: "register #######", where # is your license plate number` })
+         .catch(console.error);
+     } else {
+     ​
+    const num = numArr[1];
+       const reg = /^[0-9]*$/;
+​
+    if (num.match(reg)) {
       const select = db.get('users').find({user: message.user}).value();
       if (select) {
-        db.get('users').remove({user: message.user}).write();
-        console.log('MESSAGE unregister success');
-        slackLocalClient.chat.postMessage({ channel: message.channel, text: `Congrats <@${message.user}>! your plate number has been unregistered` })
-          .catch(console.error);
-
+        db.get('users').find({user: message.user}).assign({plate: num}).write();
       } else {
-        console.log('MESSAGE unregister success');
-        slackLocalClient.chat.postMessage({ channel: message.channel, text: `404 - <@${message.user}>! your license plate number was not found` })
-          .catch(console.error);
-      }
-    } else
-
-    // ------------------------ REGISTER PLATE----------------------------------------
-    if (!message.subtype && message.text.indexOf('register') >= 0) {
-      console.log('MESSAGE register');
-      // Initialize a client
-      const numArr = message.text.split(' ');
-      if (numArr.length !== 2) {
-        console.log('MESSAGE register error mistype');
-        slackLocalClient.chat.postMessage({ channel: message.channel, text: `Hi, <@${message.user}>! your command was mistyped. Try again like this: "register #######", where # is your license plate number` })
-          .catch(console.error);
-      } else {
-
-        const num = numArr[1];
-        const reg = /^[0-9]*$/;
-
-        if (num.match(reg)) {
-          const select = db.get('users').find({user: message.user}).value();
-          if (select) {
-            db.get('users').find({user: message.user}).assign({plate: num}).write();
-          } else {
-            db.get('users')
+        db.get('users')
           .push({plate: num, user: message.user})
-              .write();
-          }
-          console.log('MESSAGE register success');
-          slackLocalClient.chat.postMessage({ channel: message.channel, text: `Congrats <@${message.user}>! your license plate number ${num} has been registered` })
-            .catch(console.error);
-        } else {
-          console.log('MESSAGE register error wrong input');
-          slackLocalClient.chat.postMessage({ channel: message.channel, text: `<@${message.user}> please use only numbers to register your license plate.` })
-            .catch(console.error);
-        }
+          .write();
       }
+      console.log('MESSAGE register success');
+      slackLocalClient.chat.postMessage({ channel: message.channel, text: `Congrats <@${message.user}>! your license plate number ${num} has been registered` })
+        .catch(console.error);
+    } else {
+      console.log('MESSAGE register error wrong input');
+      slackLocalClient.chat.postMessage({ channel: message.channel, text: `<@${message.user}> please use only numbers to register your license plate.` })
+        .catch(console.error);
     }
-  }
+     }
+   }
+ }
 });
-
+​
 slackEvents.on('file_shared', (message, body) => {
-  const fileId = body.event.file_id;
-  console.log('FILE SHARED -', fileId);
-  slackLocalClient.files.info({file: fileId}).then((res) => {
-
-    console.log('File info:',res);
-    const imageUrl = res.file.url_private;
-    const type = res.file.pretty_type;
-
+​
+  console.log('FILE SHARED');
+​
+  if (message.channel_id === _CHANNEL_ID) {
+  ​
+    console.log('FILE SHARED IN CHANNEL');
+​
+    const fileId = body.event.file_id;
+    console.log('FILE SHARED -', fileId);
+    slackLocalClient.files.info({file: fileId}).then((res) => {
+    ​
+    console.log('File info:', res);
+      const imageUrl = res.file.url_private;
+      const type = res.file.pretty_type;
+​
     const options = {
       url: imageUrl,
       headers: {
         'User-Agent': 'request',
-        'Authorization': 'xoxp-9626711303-423400364050-556897838692-025c09c1cfb5849f0408c568f536988e'
+        'Authorization': 'Bearer xoxp-9626711303-411779210516-556372558769-bf5fa303a7b9f92e4cffb7d3104699df'
       }
     };
-
+​
     request(options).pipe(fs.createWriteStream('test.png').on('close', () => {
       console.log('DOWNLOADED');
-
+      console.log('++++message.user_id', message.user_id);
+​
       let secret_Key = 'sk_2755695f7e4deb13caabc664';
       let api_url = 'https://api.openalpr.com/v2/recognize?recognize_vehicle=1&country=eu&secret_key=' + secret_Key;
-
+​
       const data = {
         image: {
-          value:  fs.createReadStream(__dirname + '/test.png'),
+          value: fs.createReadStream(__dirname + '/test.png'),
           options: {
             filename: 'test.png',
             contentType: 'image/png'
           }
         }
       };
-
+​
       request.post({url: api_url, formData: data}, (err, res, body) => {
-
+      ​
         const data = JSON.parse(body);
-        /*
-        console.log('found plate', data.results[0].plate);
-        const result = data.results[0].plate;
-        slackClient.chat.postMessage({ channel: message.channel_id, text: `Hi, <@${message.user_id}> I see you've blocked the car with the plate ${result}.` })
-         .catch(console.error);
-
-        db.get('blockers')
-          .push({user: message.user_id, blocking: result})
-          .write();
-
-        const blockedUser = db.get('users').find({plate: result}).value().user;
-        */
-
+​
         const results = data.results;
-
+​
         results.forEach(val => {
-          let blockedUser = db.get('users').find({plate: val.plate}).value().user;
-          console.log('------------------------- blocked',blockedUser);
+          let blockedUser = db.get('users').find({plate: val.plate}).value();
+          console.log('------------------------- blocked', blockedUser);
           if (blockedUser) {
-            slackLocalClient.chat.postMessage({ channel: message.channel_id, text: `Hi <@${blockedUser}>, I wanted you to know that <@${message.user_id}> blocked your car with the license plate ${val.plate}.` })
+            slackLocalClient.chat.postMessage({
+              channel: message.channel_id,
+              text: `Hi <@${blockedUser.user}>, I wanted you to know that <@${message.user_id}> blocked your car with the license plate ${val.plate}.`
+            })
               .catch(console.error);
           }
         });
-
+​
       })
     }));
-  })
-    .catch(err => console.log('---------- err --------------', err));
+    })
+      .catch(err => console.log('---------- err --------------', err));
+  }
 });
-
+​
 /*slackEvents.on('file_created', (message, body) => {
-
+​
 });*/
 /*
-
+​
 // *** Responding to reactions with the same emoji ***
 slackEvents.on('reaction_added', (event, body) => {
-  // Initialize a client
-  const slack = getClientByTeamId(body.team_id);
-  // Handle initialization failure
-  if (!slack) {
-    return console.error('No authorization found for this team. Did you install the app through the url provided by ngrok?');
-  }
-  // Respond to the reaction back with the same emoji
-  slack.chat.postMessage({ channel: event.item.channel, text: `:${event.reaction}:` })
-    .catch(console.error);
+ // Initialize a client
+ const slack = getClientByTeamId(body.team_id);
+ // Handle initialization failure
+ if (!slack) {
+  return console.error('No authorization found for this team. Did you install the app through the url provided by ngrok?');
+ }
+ // Respond to the reaction back with the same emoji
+ slack.chat.postMessage({ channel: event.item.channel, text: `:${event.reaction}:` })
+  .catch(console.error);
 });
 */
-
+​
 // *** Handle errors ***
 slackEvents.on('error', (error) => {
   if (error.code === slackEventsApi.errorCodes.TOKEN_VERIFICATION_FAILURE) {
@@ -236,7 +239,7 @@ ${JSON.stringify(error.body)}`);
     console.error(`An error occurred while handling a Slack event: ${error.message}`);
   }
 });
-
+​
 // Start the express application
 const port = process.env.PORT || 3333;
 http.createServer(app).listen(port, () => {
